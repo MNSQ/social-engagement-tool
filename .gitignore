@@ -40,3 +40,4 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 public/test-data/*.csv
+!public/test-data/synthetic_tweets_500.csv
