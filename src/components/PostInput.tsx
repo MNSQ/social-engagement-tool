@@ -52,16 +52,16 @@ export function PostInput({ value, onChange, onAnalyze, onLoadSample, error }: P
         onChange={(e) => onChange(e.target.value)}
         spellCheck={false}
         placeholder="Paste a JSON array of posts here..."
-        className="mt-4 h-48 w-full resize-y rounded-lg border border-slate-800 bg-slate-950 p-3 font-mono text-sm text-slate-200 placeholder:text-slate-600 focus:border-cyan-500 focus:outline-none"
+        className="mt-4 h-48 w-full resize-y rounded-xl border border-slate-800 bg-slate-950 p-3 font-mono text-sm text-slate-200 placeholder:text-slate-600 focus:border-cyan-500 focus:outline-none"
       />
 
       {error && (
-        <p className="mt-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+        <p className="mt-2 rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
           {error}
         </p>
       )}
 
-      <details className="mt-4 rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-sm text-slate-400">
+      <details className="mt-4 rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-sm text-slate-400">
         <summary className="cursor-pointer font-medium text-slate-300">Expected JSON format</summary>
         <pre className="mt-2 overflow-x-auto whitespace-pre rounded-lg bg-slate-950 p-3 font-mono text-xs text-slate-400">
           {EXAMPLE_JSON}

@@ -61,7 +61,7 @@ export function KeywordSettings({ keywordGroups, onChange }: KeywordSettingsProp
                 })
               }
               spellCheck={false}
-              className="h-24 w-full resize-y rounded-lg border border-slate-800 bg-slate-950 p-2 font-mono text-xs text-slate-300 focus:border-cyan-500 focus:outline-none"
+              className="h-24 w-full resize-y rounded-xl border border-slate-800 bg-slate-950 p-2 font-mono text-xs text-slate-300 focus:border-cyan-500 focus:outline-none"
             />
           </div>
         ))}

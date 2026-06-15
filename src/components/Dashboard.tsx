@@ -7,6 +7,7 @@ import { analyzePosts, computeStats, filterOpportunities } from "@/lib/scoring";
 import { SAMPLE_DATA_REFERENCE_TIME, samplePosts } from "@/lib/samplePosts";
 import type { KeywordGroups, Post } from "@/lib/types";
 import { parsePostsInput } from "@/lib/types";
+import { BoltIcon, ChevronDownIcon } from "./icons";
 import { KeywordSettings } from "./KeywordSettings";
 import { OpportunityCard } from "./OpportunityCard";
 import { PostInput } from "./PostInput";
@@ -76,22 +77,34 @@ export function Dashboard({ initialPosts, isAdmin = false, userEmail, signOutSlo
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-8 px-4 py-10 sm:px-6 lg:px-8">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
-            Social Media Engagement Tool
-          </p>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-100 sm:text-4xl">
-            Engagement Opportunities
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm text-slate-400">
-            Tweets worth engaging with — curated and ranked by reach, recency, and relevance. Write
-            your own reply — your voice carries further than a template.
-          </p>
+      <header className="flex flex-col gap-4 border-b border-slate-800/60 pb-6 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-cyan-500/10 ring-1 ring-cyan-500/30">
+            <BoltIcon className="h-5 w-5 text-cyan-300" />
+          </span>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+              Social Media Engagement Tool
+            </p>
+            <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-100 sm:text-4xl">
+              Engagement Opportunities
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm text-slate-400">
+              Tweets worth engaging with — curated and ranked by reach, recency, and relevance. Write
+              your own reply — your voice carries further than a template.
+            </p>
+          </div>
         </div>
         {(userEmail || signOutSlot) && (
           <div className="flex items-center gap-3 text-sm text-slate-400">
-            {userEmail && <span>{userEmail}</span>}
+            {userEmail && (
+              <span className="inline-flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/60 py-1 pl-1 pr-3">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-800 text-[11px] font-semibold text-slate-300">
+                  {userEmail.charAt(0).toUpperCase()}
+                </span>
+                {userEmail}
+              </span>
+            )}
             {signOutSlot}
           </div>
         )}
@@ -100,12 +113,15 @@ export function Dashboard({ initialPosts, isAdmin = false, userEmail, signOutSlo
       <StatsCards stats={stats} />
 
       <section>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Engagement Opportunities
+        </h2>
         {scored.length === 0 ? (
-          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-8 text-center text-sm text-slate-400">
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 text-center text-sm text-slate-400">
             No posts analyzed yet. Load sample posts or paste JSON below to get started.
           </div>
         ) : opportunities.length === 0 ? (
-          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-8 text-center text-sm text-slate-400">
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 text-center text-sm text-slate-400">
             No strong engagement opportunities were found in this batch. Try different posts or
             adjust the keyword settings in Admin settings.
           </div>
@@ -120,9 +136,10 @@ export function Dashboard({ initialPosts, isAdmin = false, userEmail, signOutSlo
 
       {isAdmin && (
         <>
-          <details className="rounded-lg border border-slate-800/60 bg-slate-900/20 px-4 py-3">
-            <summary className="cursor-pointer text-sm font-medium text-slate-500 hover:text-slate-300">
+          <details className="group rounded-2xl border border-slate-800/60 bg-slate-900/30 px-4 py-3 transition-colors open:border-slate-700">
+            <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-medium text-slate-400 transition-colors hover:text-slate-200 [&::-webkit-details-marker]:hidden">
               Import test posts
+              <ChevronDownIcon className="h-4 w-4 text-slate-500 transition-transform duration-200 group-open:rotate-180" />
             </summary>
             <PostInput
               value={jsonInput}
@@ -133,9 +150,10 @@ export function Dashboard({ initialPosts, isAdmin = false, userEmail, signOutSlo
             />
           </details>
 
-          <details className="rounded-lg border border-slate-800/60 bg-slate-900/20 px-4 py-3">
-            <summary className="cursor-pointer text-sm font-medium text-slate-500 hover:text-slate-300">
+          <details className="group rounded-2xl border border-slate-800/60 bg-slate-900/30 px-4 py-3 transition-colors open:border-slate-700">
+            <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-medium text-slate-400 transition-colors hover:text-slate-200 [&::-webkit-details-marker]:hidden">
               Admin settings
+              <ChevronDownIcon className="h-4 w-4 text-slate-500 transition-transform duration-200 group-open:rotate-180" />
             </summary>
             <KeywordSettings keywordGroups={keywordGroups} onChange={setKeywordGroups} />
           </details>
