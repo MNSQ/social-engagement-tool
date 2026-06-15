@@ -52,8 +52,13 @@ function getClientNow() {
   return clientNow;
 }
 
-export function Dashboard() {
-  const [posts, setPosts] = useState<Post[]>(samplePosts);
+interface DashboardProps {
+  /** Posts to analyze on initial load — falls back to `samplePosts` if omitted. */
+  initialPosts?: Post[];
+}
+
+export function Dashboard({ initialPosts }: DashboardProps) {
+  const [posts, setPosts] = useState<Post[]>(initialPosts ?? samplePosts);
   const [jsonInput, setJsonInput] = useState(() => JSON.stringify(samplePosts, null, 2));
   const [keywordGroups, setKeywordGroups] = useState<KeywordGroups>(defaultKeywordGroups);
   const [error, setError] = useState<string | null>(null);
