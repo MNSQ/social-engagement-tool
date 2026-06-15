@@ -33,45 +33,38 @@ const STRONG_CLAIM_PATTERNS: RegExp[] = [
 /**
  * Internal mapping from topic phrases to a "natural connection" reply angle.
  * Used for strategic value scoring (max 15) and to seed the suggested reply angle.
- * `short` is a one-sentence version used for the card's short opportunity explanation.
  * Not user-editable — these are the product's strategic talking points.
  */
-const STRATEGIC_ANGLES: { keywords: string[]; angle: string; short: string }[] = [
+const STRATEGIC_ANGLES: { keywords: string[]; angle: string }[] = [
   {
     keywords: ["expensive", "too expensive", "cost", "pricing", "afford", "priced out"],
     angle:
       "Point out how decentralized GPU marketplaces can offer meaningfully cheaper compute than traditional cloud pricing.",
-    short: "Good opening to mention cheaper decentralized GPU compute as an alternative.",
   },
   {
     keywords: ["waitlist", "shortage", "sold out", "can't get", "cant get", "impossible to get", "gpu access", "access to gpus", "rate limit"],
     angle:
       "Mention global decentralized GPU supply as a way to get compute without hyperscaler waitlists or allocation limits.",
-    short: "Strong opening to add context around alternative compute supply.",
   },
   {
     keywords: ["inference", "latency", "deploy", "production"],
     angle:
       "Highlight how distributed inference networks can cut latency and cost for production AI workloads.",
-    short: "Good chance to bring up distributed inference for cost and latency.",
   },
   {
     keywords: ["hyperscaler", "aws", "azure", "google cloud", "gcp"],
     angle:
       "Offer perspective on reducing reliance on hyperscalers by tapping decentralized infrastructure for suitable workloads.",
-    short: "Worth adding a point about reducing hyperscaler dependence.",
   },
   {
     keywords: ["depin", "decentralized", "ai agent", "ai agents"],
     angle:
       "Engage on how DePIN networks are maturing into real infrastructure for AI and agent workloads, not just token incentives.",
-    short: "Good chance to note DePIN becoming real infrastructure for AI workloads.",
   },
   {
     keywords: ["nvidia", "h100", "a100", "gpu cluster", "gpu supply", "bottleneck"],
     angle:
       "Note how marketplace-based GPU access can complement constrained NVIDIA hardware supply.",
-    short: "Worth mentioning how GPU marketplaces ease hardware supply constraints.",
   },
 ];
 
@@ -127,13 +120,503 @@ function categorizeTopic(coreMatches: string[], marketMatches: string[], generic
   return genericAi ? "AI" : undefined;
 }
 
-/** Builds the opening sentence of the short opportunity explanation. */
-function buildLeadIn(engagementPotential: number, replyOpportunity: number, category?: string): string {
-  const topic = category ?? "AI infrastructure";
-  if (engagementPotential >= 14) return `High-reach post about ${topic}.`;
-  if (replyOpportunity >= 12) return `Active ${topic} discussion.`;
-  if (engagementPotential >= 6) return `Relevant ${topic} post gaining traction.`;
-  return `Relevant ${topic} post.`;
+/** Maps a topic category to the noun phrase used in the short card explanation. */
+const TOPIC_PHRASES: Record<string, string> = {
+  DePIN: "decentralized compute",
+  "AI Inference": "inference",
+  "AI Agents": "AI agents",
+  "GPU Hardware": "GPU hardware",
+  "Cloud & Hyperscalers": "cloud GPU",
+  "AI Infrastructure": "AI infrastructure",
+  AI: "AI",
+};
+
+function topicPhrase(category?: string): string {
+  return (category && TOPIC_PHRASES[category]) || "AI infrastructure";
+}
+
+/**
+ * Small deterministic string hash, used to vary card explanation wording per
+ * post without introducing randomness (renders must stay stable).
+ */
+function hashString(value: string): number {
+  let hash = 5381;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash * 33 + value.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+/** Deterministically picks an item from `items`. `salt` lets independent picks for the same post diverge. */
+function pick<T>(items: T[], seed: number, salt = 0): T {
+  return items[(seed + salt) % items.length];
+}
+
+/** Formats large counts compactly, e.g. 12400 -> "12.4K". */
+function formatCompact(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
+  return `${value}`;
+}
+
+/** Named "why reply now" signals, derived from the opportunity trigger keywords. */
+type TriggerKind = "pricing" | "shortage" | "comparison" | "painPoint" | "debate" | "question";
+
+const PRICING_TERMS = ["expensive", "too expensive", "cost", "pricing", "priced out"];
+const SHORTAGE_TERMS = [
+  "waitlist",
+  "shortage",
+  "bottleneck",
+  "sold out",
+  "rate limit",
+  "rate limited",
+  "throttle",
+  "can't get",
+  "cant get",
+  "impossible to get",
+  "gpu access",
+  "access to gpus",
+];
+const COMPARISON_TERMS = ["compare", "vs", "alternative"];
+const PAIN_POINT_TERMS = ["struggling", "pain point", "anyone else"];
+const DEBATE_TERMS = ["debate", "unpopular opinion", "hot take"];
+
+/** Picks the most actionable opportunity-trigger signals first (at most two are used). */
+function detectTriggers(
+  triggerMatches: string[],
+  asksQuestion: boolean,
+  makesStrongClaim: boolean,
+): TriggerKind[] {
+  const has = (terms: string[]) => triggerMatches.some((match) => terms.includes(match));
+  const kinds: TriggerKind[] = [];
+
+  if (has(PRICING_TERMS)) kinds.push("pricing");
+  if (has(SHORTAGE_TERMS)) kinds.push("shortage");
+  if (has(COMPARISON_TERMS)) kinds.push("comparison");
+  if (has(PAIN_POINT_TERMS)) kinds.push("painPoint");
+  if (makesStrongClaim || has(DEBATE_TERMS)) kinds.push("debate");
+  if (asksQuestion) kinds.push("question");
+
+  return kinds;
+}
+
+/** Picks "a" or "an" for a topic phrase based on its leading sound. */
+function articleFor(topic: string): string {
+  return /^[aeiou]/i.test(topic) ? "an" : "a";
+}
+
+/** Multiple phrasings per trigger, used after "the post" — picked by seed so repeated triggers don't read identically. */
+const TRIGGER_PHRASE_VARIANTS: Record<TriggerKind, ((topic: string) => string)[]> = {
+  pricing: [
+    (topic) => `complains about ${topic} pricing`,
+    (topic) => `calls out how expensive ${topic} has gotten`,
+    (topic) => `pushes back on current ${topic} costs`,
+  ],
+  shortage: [
+    (topic) => `flags ${articleFor(topic)} ${topic} supply or access bottleneck`,
+    (topic) => `frames ${topic} availability as a real bottleneck`,
+    (topic) => `points out how hard ${topic} access has become`,
+  ],
+  comparison: [
+    (topic) => `compares ${topic} alternatives`,
+    (topic) => `weighs different ${topic} options against each other`,
+    (topic) => `asks how ${topic} options stack up against each other`,
+  ],
+  painPoint: [
+    (topic) => `describes ${articleFor(topic)} ${topic} pain point`,
+    (topic) => `lays out a real ${topic} struggle`,
+    (topic) => `calls out a recurring ${topic} headache`,
+  ],
+  debate: [
+    (topic) => `stakes out a strong take on ${topic}`,
+    (topic) => `pushes a contrarian view on ${topic}`,
+    (topic) => `makes a bold claim about ${topic} worth responding to`,
+  ],
+  question: [
+    (topic) => `asks the community about ${topic}`,
+    (topic) => `puts a direct ${topic} question to the replies`,
+    (topic) => `opens the floor on ${topic} with a direct question`,
+  ],
+};
+
+function triggerPhrase(trigger: TriggerKind, topic: string, seed: number, salt = 0): string {
+  return pick(TRIGGER_PHRASE_VARIANTS[trigger], seed, salt)(topic);
+}
+
+/** Noun-phrase form of each trigger, used to combine two triggers in one sentence ("links X with Y"). */
+const TRIGGER_NOUN_PHRASES: Record<TriggerKind, (topic: string) => string> = {
+  pricing: (topic) => `${topic} pricing pressure`,
+  shortage: (topic) => `${topic} supply pain`,
+  comparison: (topic) => `${topic} alternatives`,
+  painPoint: (topic) => `${topic} pain points`,
+  debate: (topic) => `strong opinions on ${topic}`,
+  question: (topic) => `open questions about ${topic}`,
+};
+
+/** Noun phrase for what a trigger "frames" the post as, used in the notable-term template. */
+const TRIGGER_FRAMING_NOUNS: Record<TriggerKind, string[]> = {
+  pricing: ["a cost problem worth addressing", "a budget pain point worth flagging"],
+  shortage: ["a production-scale problem", "a real availability bottleneck"],
+  comparison: ["an open comparison worth weighing in on", "a question about alternatives"],
+  painPoint: ["a recurring pain point", "a frustration worth acknowledging"],
+  debate: ["a debate worth joining", "a take worth responding to"],
+  question: ["a question worth answering", "an open question worth jumping into"],
+};
+
+function triggerFramingNoun(trigger: TriggerKind, seed: number, salt = 51): string {
+  return pick(TRIGGER_FRAMING_NOUNS[trigger], seed, salt);
+}
+
+/** Shorter, topic-agnostic version of a trigger, used as a second clause. */
+const SECONDARY_TRIGGER_CLAUSE_VARIANTS: Record<TriggerKind, string[]> = {
+  pricing: ["raises cost concerns", "puts a number on the pricing pain"],
+  shortage: ["points to supply or access constraints", "underscores how tight access has become"],
+  comparison: ["weighs alternatives", "puts the options side by side"],
+  painPoint: ["mentions a pain point", "names a specific frustration"],
+  debate: ["takes a strong stance", "isn't shy about its opinion"],
+  question: ["invites discussion", "leaves an opening for replies"],
+};
+
+function secondaryTriggerClause(trigger: TriggerKind, seed: number, salt = 6): string {
+  return pick(SECONDARY_TRIGGER_CLAUSE_VARIANTS[trigger], seed, salt);
+}
+
+/** Verb-phrase traction summary, e.g. "already has active replies". */
+function tractionVerbPhrase(post: Post, engagementPotential: number, seed: number): string {
+  if (post.replies >= 20) {
+    return pick(["already has an active reply thread", "already has a busy reply thread going"], seed, 11);
+  }
+  if (post.replies >= 5) {
+    return pick(["already has active replies", "already has people replying"], seed, 11);
+  }
+  if (engagementPotential >= 14) return pick(["has strong traction", "is pulling strong numbers"], seed, 11);
+  if (engagementPotential >= 8) return pick(["has solid traction", "is getting solid engagement"], seed, 11);
+  if (engagementPotential >= 3) {
+    return pick(["has some early traction", "is picking up some early engagement"], seed, 11);
+  }
+  return "has only weak engagement so far";
+}
+
+/** Noun-phrase traction summary, e.g. "solid traction". */
+function tractionNounPhrase(post: Post, engagementPotential: number, seed: number): string {
+  if (post.replies >= 20) return pick(["an active reply thread", "a busy reply thread"], seed, 12);
+  if (post.replies >= 5) return pick(["active replies already", "people already replying"], seed, 12);
+  if (engagementPotential >= 14) return pick(["strong traction", "strong numbers"], seed, 12);
+  if (engagementPotential >= 8) return pick(["solid traction", "solid engagement"], seed, 12);
+  if (engagementPotential >= 3) return pick(["some early traction", "some early engagement"], seed, 12);
+  return "limited traction so far";
+}
+
+/** How confidently a reply here would get seen, based on current engagement. */
+function visibilityClause(engagementPotential: number, post: Post): string {
+  if (post.replies >= 5 || engagementPotential >= 8) {
+    return "the engagement is already strong enough to get visibility";
+  }
+  if (engagementPotential >= 3) {
+    return "there's enough early traction to make a reply worth it";
+  }
+  return "it's early, but worth getting ahead of";
+}
+
+/** A concrete metric callout (real numbers), when the post has notable traction. */
+function metricPhrase(post: Post, seed: number): string | undefined {
+  const candidates: string[] = [];
+  if (post.views >= 5_000) {
+    candidates.push(pick([`${formatCompact(post.views)} views`, `${formatCompact(post.views)} views already`], seed, 21));
+  }
+  if (post.replies >= 5) {
+    candidates.push(pick([`${post.replies} replies`, `${post.replies} replies already`], seed, 22));
+  }
+  const likesAndReposts = post.likes + post.reposts;
+  if (likesAndReposts >= 100) {
+    candidates.push(
+      pick(
+        [`${formatCompact(likesAndReposts)} likes and reposts`, `${formatCompact(likesAndReposts)} combined likes and reposts`],
+        seed,
+        23,
+      ),
+    );
+  }
+  if (candidates.length === 0) return undefined;
+  return pick(candidates, seed, 24);
+}
+
+/** Freshness phrasing in a handful of buckets, each with multiple variants. */
+const FRESHNESS_PHRASES: { maxHours: number; variants: string[] }[] = [
+  { maxHours: 2, variants: ["posted within the last couple hours", "just went up", "fresh off the timeline"] },
+  { maxHours: 8, variants: ["posted earlier today", "went up a few hours ago", "still fresh from today"] },
+  { maxHours: 24, variants: ["posted within the last day", "went up in the last 24 hours", "from earlier today"] },
+  { maxHours: 72, variants: ["posted a day or two ago", "a couple days old", "from earlier this week"] },
+  { maxHours: Infinity, variants: ["an older post at this point", "posted a while back", "no longer a fresh post"] },
+];
+
+function freshnessPhrase(hoursOld: number, seed: number, salt = 31): string {
+  const bucket = FRESHNESS_PHRASES.find((b) => hoursOld <= b.maxHours) ?? FRESHNESS_PHRASES[FRESHNESS_PHRASES.length - 1];
+  return pick(bucket.variants, seed, salt);
+}
+
+/** Literal terms worth naming directly in an explanation, checked in priority order. */
+const NOTABLE_TERM_PATTERNS: { pattern: RegExp; label: string }[] = [
+  { pattern: /\bh100s?\b/i, label: "H100" },
+  { pattern: /\ba100s?\b/i, label: "A100" },
+  { pattern: /\bh200s?\b/i, label: "H200" },
+  { pattern: /\bb200s?\b/i, label: "B200" },
+  { pattern: /\bnvidia\b/i, label: "NVIDIA" },
+  { pattern: /\bwaitlists?\b/i, label: "waitlist" },
+  { pattern: /\binference\b/i, label: "inference" },
+  { pattern: /\bgpus?\b/i, label: "GPU" },
+  { pattern: /\bllms?\b/i, label: "LLM" },
+  { pattern: /\bdepin\b/i, label: "DePIN" },
+];
+
+function extractNotableTerm(text: string): string | undefined {
+  for (const { pattern, label } of NOTABLE_TERM_PATTERNS) {
+    if (pattern.test(text)) return label;
+  }
+  return undefined;
+}
+
+/** What a reply could pivot to, tied to the post's topic category. */
+const STRATEGIC_TIE_INS: Record<string, string[]> = {
+  DePIN: ["decentralized GPU supply", "DePIN compute networks", "distributed GPU marketplaces"],
+  "AI Inference": ["distributed inference capacity", "an alternative compute angle for inference", "cheaper inference infrastructure"],
+  "AI Agents": ["compute built for AI agent workloads", "infrastructure suited to agent workloads"],
+  "GPU Hardware": ["marketplace-based GPU access", "an alternative to scarce GPU hardware"],
+  "Cloud & Hyperscalers": ["decentralized alternatives to hyperscaler pricing", "cloud GPU options outside the usual hyperscalers"],
+  "AI Infrastructure": ["more flexible AI infrastructure options", "decentralized compute as an alternative"],
+  AI: ["a compute infrastructure angle", "an alternative compute perspective"],
+};
+
+function strategicTieIn(category: string | undefined, seed: number, salt = 41): string {
+  const options = (category && STRATEGIC_TIE_INS[category]) || STRATEGIC_TIE_INS.AI;
+  return pick(options, seed, salt);
+}
+
+/** Explains why a topically-relevant post is still lower priority. */
+function weaknessClause(post: Post, engagementPotential: number, hoursOld: number, seed: number): string {
+  const weakEngagement = engagementPotential < 6 && post.replies < 5;
+  const older = hoursOld > 24;
+  if (weakEngagement && older) {
+    return pick(["engagement is weak and the post is already older", "it hasn't picked up traction and is no longer fresh"], seed, 61);
+  }
+  if (weakEngagement) {
+    return pick(["engagement is still weak right now", "it hasn't picked up much traction yet"], seed, 61);
+  }
+  if (older) {
+    return pick(["the post is already a bit older", "the moment for this one has mostly passed"], seed, 61);
+  }
+  return pick(
+    ["it doesn't stand out enough on traction or freshness yet", "there's nothing distinctive enough here yet to prioritize"],
+    seed,
+    61,
+  );
+}
+
+const WALLET_BAIT_RISK_FLAGS = new Set(["dm me", "send wallet", "seed phrase"]);
+const HYPE_RISK_FLAGS = new Set([
+  "giveaway",
+  "airdrop",
+  "free token",
+  "pump",
+  "dump",
+  "price prediction",
+  "100x",
+  "moon",
+  "scam",
+]);
+
+/** Short, specific reason to skip a post flagged as unsafe. */
+function buildAvoidExplanation(riskFlags: string[], seed: number): string {
+  if (riskFlags.some((flag) => WALLET_BAIT_RISK_FLAGS.has(flag))) {
+    return pick(
+      ["Skip — reads like wallet or DM bait, not a real conversation to join.", "Skip — this is wallet or DM-bait phrasing, not worth a reply."],
+      seed,
+      71,
+    );
+  }
+  if (riskFlags.some((flag) => HYPE_RISK_FLAGS.has(flag))) {
+    return pick(
+      [
+        "Skip — token hype, giveaway, or scam language, not a genuine opportunity.",
+        "Skip — reads as hype or giveaway bait rather than a real discussion.",
+      ],
+      seed,
+      71,
+    );
+  }
+  return pick(
+    [
+      "Skip — touches on politics or unsafe content, outside this account's lane.",
+      "Skip — strays into politics or unsafe territory, outside this account's lane.",
+    ],
+    seed,
+    71,
+  );
+}
+
+/**
+ * Builds the one- or two-sentence "why this post" explanation shown on each
+ * opportunity card, using the same topic, trigger, traction, freshness, and
+ * risk signals that drive the score itself. Several phrasing variants per
+ * signal are selected deterministically from the post's id/text, so posts
+ * that land in the same scoring bucket don't all read identically.
+ */
+function buildShortExplanation(params: {
+  post: Post;
+  score: number;
+  safetyStatus: SafetyStatus;
+  severity: RiskSeverity | "none";
+  riskFlags: string[];
+  category?: string;
+  topicRelevance: number;
+  triggerMatches: string[];
+  asksQuestion: boolean;
+  makesStrongClaim: boolean;
+  engagementPotential: number;
+  isNew: boolean;
+  hoursOld: number;
+}): string {
+  const {
+    post,
+    score,
+    safetyStatus,
+    severity,
+    riskFlags,
+    category,
+    topicRelevance,
+    triggerMatches,
+    asksQuestion,
+    makesStrongClaim,
+    engagementPotential,
+    isNew,
+    hoursOld,
+  } = params;
+
+  const seed = hashString(`${post.id}::${post.text}`);
+
+  if (safetyStatus === "Avoid") {
+    return buildAvoidExplanation(riskFlags, seed);
+  }
+  if (topicRelevance === 0) {
+    return pick(
+      [
+        "Skip — no link to GPU compute, inference, or DePIN, so a reply would feel forced.",
+        "Skip — nothing here connects to GPU compute, inference, or DePIN.",
+      ],
+      seed,
+      72,
+    );
+  }
+
+  const topic = topicPhrase(category);
+  const [primaryTrigger, secondaryTrigger] = detectTriggers(triggerMatches, asksQuestion, makesStrongClaim);
+  const tractionVerb = tractionVerbPhrase(post, engagementPotential, seed);
+  const tractionNoun = tractionNounPhrase(post, engagementPotential, seed);
+  const freshness = freshnessPhrase(hoursOld, seed);
+  const metric = metricPhrase(post, seed);
+  const notableTerm = extractNotableTerm(post.text);
+  const notableTermEchoesTopic = notableTerm ? topic.toLowerCase().includes(notableTerm.toLowerCase()) : true;
+  const riskSuffix = severity === "none" ? "" : ", though it's worth a quick safety check first";
+
+  if (score >= 70) {
+    const opener =
+      score >= 85 ? pick(["Top pick", "Top opportunity"], seed, 1) : pick(["Strong fit", "Strong opportunity"], seed, 1);
+
+    const templates: (string | undefined)[] = [];
+
+    if (primaryTrigger && secondaryTrigger) {
+      templates.push(
+        `${opener}: the post links ${TRIGGER_NOUN_PHRASES[primaryTrigger](topic)} with ${TRIGGER_NOUN_PHRASES[secondaryTrigger](topic)}, and ${visibilityClause(engagementPotential, post)}${riskSuffix}.`,
+      );
+    }
+
+    if (notableTerm && primaryTrigger) {
+      const termPhrase =
+        primaryTrigger === "shortage"
+          ? `${notableTerm} waitlists`
+          : primaryTrigger === "pricing"
+            ? `${notableTerm} pricing`
+            : notableTerm;
+      templates.push(
+        `Worth opening because it frames ${termPhrase} as ${triggerFramingNoun(primaryTrigger, seed)}, which creates a clean entry point for ${strategicTieIn(category, seed)}.`,
+      );
+    }
+
+    if (metric && primaryTrigger) {
+      templates.push(
+        `${opener} because the post ${triggerPhrase(primaryTrigger, topic, seed, 2)}, and it's already pulling in ${metric}${riskSuffix}.`,
+      );
+    }
+
+    templates.push(
+      `Fresh ${topic} discussion with ${tractionNoun}, ${freshness}. Good place to add context${severity === "none" ? "" : " after a quick safety check"}.`,
+    );
+
+    if (primaryTrigger) {
+      templates.push(`${opener} because the post ${triggerPhrase(primaryTrigger, topic, seed, 3)} and ${tractionVerb}${riskSuffix}.`);
+    } else {
+      templates.push(`${opener} — ${articleFor(topic)} ${topic} post with ${tractionNoun}, ${freshness}${riskSuffix}.`);
+    }
+
+    const valid = templates.filter((candidate): candidate is string => Boolean(candidate));
+    return pick(valid, seed, 100);
+  }
+
+  if (score >= 50) {
+    const templates: (string | undefined)[] = [];
+
+    if (isNew && engagementPotential >= 6) {
+      const tail =
+        severity === "none" ? `${tractionNoun} and no obvious risk flags` : `${tractionNoun}, though it's worth a quick safety check first`;
+      templates.push(`Good opening because this is a fresh ${topic} discussion with ${tail}.`);
+      templates.push(
+        `Fresh discussion with ${tractionNoun} around ${topic}${notableTerm && !notableTermEchoesTopic ? `, not just ${notableTerm}` : ""}. Good place to add context.`,
+      );
+    }
+
+    if (primaryTrigger === "question" || secondaryTrigger === "question") {
+      templates.push(
+        `Good target because it ${triggerPhrase("question", topic, seed, 5)}, making it easy to bring up ${strategicTieIn(category, seed, 43)}.`,
+      );
+    }
+
+    if (notableTerm && !notableTermEchoesTopic && primaryTrigger) {
+      const extra = secondaryTrigger ? `, and ${TRIGGER_NOUN_PHRASES[secondaryTrigger](topic)}` : "";
+      templates.push(
+        `Useful opening because the post touches on ${notableTerm}, ${TRIGGER_NOUN_PHRASES[primaryTrigger](topic)}${extra} in one thread.`,
+      );
+    }
+
+    if (primaryTrigger) {
+      const second = secondaryTrigger ? secondaryTriggerClause(secondaryTrigger, seed) : tractionVerb;
+      templates.push(`Worth reviewing because the post ${triggerPhrase(primaryTrigger, topic, seed, 7)} and ${second}.`);
+    }
+
+    templates.push(`Worth reviewing — a relevant ${topic} post that ${tractionVerb}, ${freshness}.`);
+
+    const valid = templates.filter((candidate): candidate is string => Boolean(candidate));
+    return pick(valid, seed, 101);
+  }
+
+  if (score >= 30) {
+    return pick(
+      [
+        `Lower priority because the topic is relevant, but ${weaknessClause(post, engagementPotential, hoursOld, seed)}.`,
+        `Topically relevant${notableTerm ? ` (mentions ${notableTerm})` : ""}, but ${weaknessClause(post, engagementPotential, hoursOld, seed)} — fine to revisit later.`,
+      ],
+      seed,
+      102,
+    );
+  }
+
+  return pick(
+    [
+      `Low priority — only a loose ${topic} connection here, without enough traction or freshness to prioritize a reply.`,
+      `Skip for now — the ${topic} link is thin and there's little traction or freshness to justify a reply.`,
+    ],
+    seed,
+    103,
+  );
 }
 
 function findMatches(text: string, keywords: string[]): string[] {
@@ -330,21 +813,21 @@ export function scorePost(
     suggestedReplyAngle = "Low topical fit — likely not worth a manual reply from this account.";
   }
 
-  let shortExplanation: string;
-  if (safetyStatus === "Avoid") {
-    shortExplanation = "Flagged for risk signals — review carefully before engaging, if at all.";
-  } else {
-    const leadIn = buildLeadIn(engagementPotential, replyOpportunity, category);
-    if (matchedAngles.length > 0) {
-      shortExplanation = `${leadIn} ${matchedAngles[0].short}`;
-    } else if (topicRelevance >= 18) {
-      shortExplanation = `${leadIn} Worth adding a specific, useful perspective rather than a generic reply.`;
-    } else if (topicRelevance > 0) {
-      shortExplanation = `${leadIn} Could be worth a quick reply if you have something useful to add.`;
-    } else {
-      shortExplanation = "Limited topical fit — likely not worth a manual reply from this account.";
-    }
-  }
+  const shortExplanation = buildShortExplanation({
+    post,
+    score,
+    safetyStatus,
+    severity,
+    riskFlags,
+    category,
+    topicRelevance,
+    triggerMatches,
+    asksQuestion,
+    makesStrongClaim,
+    engagementPotential,
+    isNew,
+    hoursOld,
+  });
 
   const breakdown: ScoreBreakdown = {
     topicRelevance,
