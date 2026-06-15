@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { defaultKeywordGroups } from "@/lib/keywordConfig";
 import { analyzePosts, computeStats, filterOpportunities } from "@/lib/scoring";
@@ -55,9 +56,15 @@ function getClientNow() {
 interface DashboardProps {
   /** Posts to analyze on initial load — falls back to `samplePosts` if omitted. */
   initialPosts?: Post[];
+  /** Whether the signed-in user can see the import/admin settings panels. */
+  isAdmin?: boolean;
+  /** Email of the signed-in user, shown in the header. */
+  userEmail?: string;
+  /** Sign-out button, rendered by a parent Server Component. */
+  signOutSlot?: ReactNode;
 }
 
-export function Dashboard({ initialPosts }: DashboardProps) {
+export function Dashboard({ initialPosts, isAdmin = false, userEmail, signOutSlot }: DashboardProps) {
   const [posts, setPosts] = useState<Post[]>(initialPosts ?? samplePosts);
   const [jsonInput, setJsonInput] = useState(() => JSON.stringify(samplePosts, null, 2));
   const [keywordGroups, setKeywordGroups] = useState<KeywordGroups>(defaultKeywordGroups);
@@ -92,17 +99,25 @@ export function Dashboard({ initialPosts }: DashboardProps) {
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-8 px-4 py-10 sm:px-6 lg:px-8">
-      <header>
-        <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
-          Social Media Engagement Tool
-        </p>
-        <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-100 sm:text-4xl">
-          Engagement Opportunities
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm text-slate-400">
-          Tweets worth engaging with — curated and ranked by reach, recency, and relevance. Write
-          your own reply — your voice carries further than a template.
-        </p>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+            Social Media Engagement Tool
+          </p>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-100 sm:text-4xl">
+            Engagement Opportunities
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm text-slate-400">
+            Tweets worth engaging with — curated and ranked by reach, recency, and relevance. Write
+            your own reply — your voice carries further than a template.
+          </p>
+        </div>
+        {(userEmail || signOutSlot) && (
+          <div className="flex items-center gap-3 text-sm text-slate-400">
+            {userEmail && <span>{userEmail}</span>}
+            {signOutSlot}
+          </div>
+        )}
       </header>
 
       <StatsCards stats={stats} />
@@ -154,25 +169,29 @@ export function Dashboard({ initialPosts }: DashboardProps) {
         )}
       </section>
 
-      <details className="rounded-lg border border-slate-800/60 bg-slate-900/20 px-4 py-3">
-        <summary className="cursor-pointer text-sm font-medium text-slate-500 hover:text-slate-300">
-          Import test posts
-        </summary>
-        <PostInput
-          value={jsonInput}
-          onChange={setJsonInput}
-          onAnalyze={handleAnalyze}
-          onLoadSample={handleLoadSample}
-          error={error}
-        />
-      </details>
+      {isAdmin && (
+        <>
+          <details className="rounded-lg border border-slate-800/60 bg-slate-900/20 px-4 py-3">
+            <summary className="cursor-pointer text-sm font-medium text-slate-500 hover:text-slate-300">
+              Import test posts
+            </summary>
+            <PostInput
+              value={jsonInput}
+              onChange={setJsonInput}
+              onAnalyze={handleAnalyze}
+              onLoadSample={handleLoadSample}
+              error={error}
+            />
+          </details>
 
-      <details className="rounded-lg border border-slate-800/60 bg-slate-900/20 px-4 py-3">
-        <summary className="cursor-pointer text-sm font-medium text-slate-500 hover:text-slate-300">
-          Admin settings
-        </summary>
-        <KeywordSettings keywordGroups={keywordGroups} onChange={setKeywordGroups} />
-      </details>
+          <details className="rounded-lg border border-slate-800/60 bg-slate-900/20 px-4 py-3">
+            <summary className="cursor-pointer text-sm font-medium text-slate-500 hover:text-slate-300">
+              Admin settings
+            </summary>
+            <KeywordSettings keywordGroups={keywordGroups} onChange={setKeywordGroups} />
+          </details>
+        </>
+      )}
     </div>
   );
 }
