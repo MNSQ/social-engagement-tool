@@ -41,3 +41,4 @@ yarn-error.log*
 next-env.d.ts
 public/test-data/*.csv
 !public/test-data/synthetic_tweets_500.csv
+!public/test-data/synthetic_tweets_1000.csv

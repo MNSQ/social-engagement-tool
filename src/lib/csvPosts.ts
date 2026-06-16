@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { SAMPLE_DATA_REFERENCE_TIME } from "./samplePosts";
 import type { Post } from "./types";
 
-const CSV_PATH = join(process.cwd(), "public", "test-data", "synthetic_tweets_500.csv");
+const CSV_PATH = join(process.cwd(), "public", "test-data", "synthetic_tweets_1000.csv");
 
 const CSV_COLUMNS = [
   "authorName",
