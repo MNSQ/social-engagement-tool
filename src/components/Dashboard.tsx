@@ -40,15 +40,15 @@ interface DashboardProps {
   initialPosts?: Post[];
   /** Whether the signed-in user can see the import/admin settings panels. */
   isAdmin?: boolean;
+  /** True when the visitor has not signed in — hides admin sections and gates X links. */
+  isGuest?: boolean;
   /** Email of the signed-in user, shown in the header. */
   userEmail?: string;
   /** Sign-out button, rendered by a parent Server Component. */
   signOutSlot?: ReactNode;
-  /** Subtle admin login button shown to unauthenticated visitors. */
-  adminLoginSlot?: ReactNode;
 }
 
-export function Dashboard({ initialPosts, isAdmin = false, userEmail, signOutSlot, adminLoginSlot }: DashboardProps) {
+export function Dashboard({ initialPosts, isAdmin = false, isGuest = false, userEmail, signOutSlot }: DashboardProps) {
   const [posts, setPosts] = useState<Post[]>(initialPosts ?? samplePosts);
   const [jsonInput, setJsonInput] = useState(() => JSON.stringify(samplePosts, null, 2));
   const [keywordGroups, setKeywordGroups] = useState<KeywordGroups>(defaultKeywordGroups);
@@ -97,7 +97,7 @@ export function Dashboard({ initialPosts, isAdmin = false, userEmail, signOutSlo
             </p>
           </div>
         </div>
-        {(userEmail || signOutSlot || adminLoginSlot) && (
+        {(userEmail || signOutSlot) && (
           <div className="flex items-center gap-3 text-sm text-slate-400">
             {userEmail && (
               <span className="inline-flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/60 py-1 pl-1 pr-3">
@@ -108,7 +108,6 @@ export function Dashboard({ initialPosts, isAdmin = false, userEmail, signOutSlo
               </span>
             )}
             {signOutSlot}
-            {adminLoginSlot}
           </div>
         )}
       </header>
@@ -121,17 +120,20 @@ export function Dashboard({ initialPosts, isAdmin = false, userEmail, signOutSlo
         </h2>
         {scored.length === 0 ? (
           <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 text-center text-sm text-slate-400">
-            No posts analyzed yet. Load sample posts or paste JSON below to get started.
+            {isGuest
+              ? "No demo posts loaded."
+              : "No posts analyzed yet. Load sample posts or paste JSON below to get started."}
           </div>
         ) : opportunities.length === 0 ? (
           <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 text-center text-sm text-slate-400">
-            No strong engagement opportunities were found in this batch. Try different posts or
-            adjust the keyword settings in Admin settings.
+            {isGuest
+              ? "No strong engagement opportunities were found in the demo dataset."
+              : "No strong engagement opportunities were found in this batch. Try different posts or adjust the keyword settings in Admin settings."}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             {ranked.map((result) => (
-              <OpportunityCard key={result.post.id} result={result} now={now} />
+              <OpportunityCard key={result.post.id} result={result} now={now} isGuest={isGuest} />
             ))}
           </div>
         )}
