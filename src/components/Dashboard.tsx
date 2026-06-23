@@ -44,9 +44,11 @@ interface DashboardProps {
   userEmail?: string;
   /** Sign-out button, rendered by a parent Server Component. */
   signOutSlot?: ReactNode;
+  /** Subtle admin login button shown to unauthenticated visitors. */
+  adminLoginSlot?: ReactNode;
 }
 
-export function Dashboard({ initialPosts, isAdmin = false, userEmail, signOutSlot }: DashboardProps) {
+export function Dashboard({ initialPosts, isAdmin = false, userEmail, signOutSlot, adminLoginSlot }: DashboardProps) {
   const [posts, setPosts] = useState<Post[]>(initialPosts ?? samplePosts);
   const [jsonInput, setJsonInput] = useState(() => JSON.stringify(samplePosts, null, 2));
   const [keywordGroups, setKeywordGroups] = useState<KeywordGroups>(defaultKeywordGroups);
@@ -95,7 +97,7 @@ export function Dashboard({ initialPosts, isAdmin = false, userEmail, signOutSlo
             </p>
           </div>
         </div>
-        {(userEmail || signOutSlot) && (
+        {(userEmail || signOutSlot || adminLoginSlot) && (
           <div className="flex items-center gap-3 text-sm text-slate-400">
             {userEmail && (
               <span className="inline-flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/60 py-1 pl-1 pr-3">
@@ -106,6 +108,7 @@ export function Dashboard({ initialPosts, isAdmin = false, userEmail, signOutSlo
               </span>
             )}
             {signOutSlot}
+            {adminLoginSlot}
           </div>
         )}
       </header>
